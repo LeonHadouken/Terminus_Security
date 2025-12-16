@@ -4,23 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="c6689775-c545-42d1-a5c2-b0af60809d8d" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/.idea/Bash_security.iml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/inspectionProfiles/profiles_settings.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/misc.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/modules.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/vcs.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/README.md" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/config.conf" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/legacy/security_legacy.sh" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/lib/monitoring.sh" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/lib/network.sh" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/lib/protection.sh" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/lib/tools.sh" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/lib/ui.sh" afterDir="false" />
-      <change afterPath="$PROJECT_DIR$/secure.sh" afterDir="false" />
-    </list>
+    <list default="true" id="c6689775-c545-42d1-a5c2-b0af60809d8d" name="Changes" comment="" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -29,9 +13,15 @@
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
   </component>
-  <component name="ProjectColorInfo"><![CDATA[{
-  "associatedIndex": 2
+  <component name="GithubPullRequestsUISettings"><![CDATA[{
+  "selectedUrlAndAccountId": {
+    "url": "https://github.com/LeonHadouken/Terminus_Security.git",
+    "accountId": "c59f4b9c-66b7-4cab-a87d-e75b45c028bc"
+  }
 }]]></component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 2
+}</component>
   <component name="ProjectId" id="36wVmwCLXAsEGuaA1VSvxyxadQY" />
   <component name="ProjectLevelVcsManager" settingsEditedManually="true" />
   <component name="ProjectViewState">
@@ -41,7 +31,7 @@
   <component name="PropertiesComponent"><![CDATA[{
   "keyToString": {
     "RunOnceActivity.ShowReadmeOnStart": "true",
-    "git-widget-placeholder": "master"
+    "git-widget-placeholder": "main"
   }
 }]]></component>
   <component name="RecentsManager">
