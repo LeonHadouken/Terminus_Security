@@ -66,61 +66,87 @@ transfer_ssh_key() {
 
     PUBKEY=$(cat /root/.ssh/id_ed25519.pub)
 
-    # Определяем, находимся ли мы в WSL
+    # Определяем WSL
     if grep -qEi "(Microsoft|WSL)" /proc/version &>/dev/null; then
-        log "Обнаружена среда WSL. Попытка использовать SCP..."
+        log "Обнаружена среда WSL. Автоматический проброс ключа невозможен (NAT/Firewall)."
+
         CLIENT_IP=$(ip addr show eth0 | awk '/inet / {print $2}' | cut -d/ -f1)
-        log "Используем локальный IP WSL: $CLIENT_IP"
+        log "Локальный IP WSL: $CLIENT_IP"
 
-        echo "Убедитесь, что Windows Firewall разрешает входящие подключения на порт $WSL_PORT."
-        echo "Если не уверен — добавьте правило для ssh.exe или откройте порт вручную."
+        echo -e "\n=== РУЧНАЯ УСТАНОВКА КЛЮЧА (WSL) ==="
+        echo "Выполните на КЛИЕНТЕ (WSL):"
+        echo
+        echo "mkdir -p ~/.ssh"
+        echo "nano ~/.ssh/authorized_keys"
+        echo
+        echo "Вставьте В КОНЕЦ файла этот ключ:"
+        echo "-----------------------------------------"
+        echo "$PUBKEY"
+        echo "-----------------------------------------"
+        echo
+        echo "Затем выполните:"
+        echo "chmod 700 ~/.ssh"
+        echo "chmod 600 ~/.ssh/authorized_keys"
+        echo
+        echo "После выполнения нажмите ENTER для продолжения..."
 
-        # Создаём ~/.ssh на клиенте и добавляем ключ
-        mkdir -p ~/.ssh
-        if ! grep -qF "$PUBKEY" ~/.ssh/authorized_keys 2>/dev/null; then
-            echo "$PUBKEY" >> ~/.ssh/authorized_keys
-            chmod 700 ~/.ssh
-            chmod 600 ~/.ssh/authorized_keys
-        fi
+        # Ожидание подтверждения пользователя
+        read -r
 
-        log "✅ Ключ добавлен локально. Проверьте подключение:"
-        echo "ssh -i /root/.ssh/id_ed25519 ${WSL_USER}@${CLIENT_IP} -p $WSL_PORT"
+        log "Продолжаем выполнение. Проверьте подключение позже командой:"
+        log "ssh -i /root/.ssh/id_ed25519 ${WSL_USER}@${CLIENT_IP} -p ${WSL_PORT}"
+
         return 0
     fi
 
-    # Обычная Linux-машина: используем sshpass
+    # Обычный Linux-клиент (НЕ WSL)
     read -sp "Введите пароль пользователя '$WSL_USER' на клиенте: " WSL_PASSWORD
     echo ""
 
     if [[ -z "$WSL_PASSWORD" ]]; then
-        error "Пароль не введен. Передача ключа отменена."
-        return 1
-    fi
-
-    if ! command -v sshpass &> /dev/null; then
-        apt install -y sshpass
-    fi
-
-    SSH_CMD="mkdir -p ~/.ssh && echo '$PUBKEY' >> ~/.ssh/authorized_keys && chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys"
-
-    log "Пытаюсь передать ключ на ${WSL_USER}@${YOUR_IP}:${WSL_PORT}..."
-    if sshpass -p "$WSL_PASSWORD" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -p $WSL_PORT \
-       ${WSL_USER}@$YOUR_IP "$SSH_CMD" 2>/dev/null; then
-        log "✅ Ключ успешно передан на ${WSL_USER}@${YOUR_IP}:${WSL_PORT}"
-        if ssh -o BatchMode=yes -o ConnectTimeout=5 -p $WSL_PORT ${WSL_USER}@$YOUR_IP "echo '✅ SSH подключение работает!'" 2>/dev/null; then
-            log "✅ Автоматическая настройка успешна!"
-        else
-            warn "⚠️ Ключ передан, но тест подключения не пройден. Проверьте вручную."
-        fi
-        return 0
+        warn "Пароль не введен. Переходим к ручной установке ключа."
     else
-        error "Не удалось передать ключ автоматически"
-        error "Вручную добавьте этот ключ в ~/.ssh/authorized_keys на вашем клиенте:"
-        echo -e "\n$PUBKEY\n"
-        return 1
-    fi
-}
+        if ! command -v sshpass &>/dev/null; then
+            apt install -y sshpass
+        fi
 
+        SSH_CMD="mkdir -p ~/.ssh && echo '$PUBKEY' >> ~/.ssh/authorized_keys && chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys"
+
+        log "Пытаюсь передать ключ на ${WSL_USER}@${YOUR_IP}:${WSL_PORT}..."
+
+        if sshpass -p "$WSL_PASSWORD" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -p "$WSL_PORT" \
+            "${WSL_USER}@${YOUR_IP}" "$SSH_CMD" 2>/dev/null; then
+            log "✅ Ключ успешно передан автоматически"
+            return 0
+        fi
+    fi
+
+    # РУЧНОЙ ФОЛЛБЭК (НЕ ОШИБКА)
+    warn "Автоматическая передача недоступна. Переход в ручной режим."
+
+    echo -e "\n=== РУЧНАЯ УСТАНОВКА SSH КЛЮЧА ==="
+    echo "На КЛИЕНТЕ выполните:"
+    echo
+    echo "mkdir -p ~/.ssh"
+    echo "nano ~/.ssh/authorized_keys"
+    echo
+    echo "Добавьте этот ключ:"
+    echo "-----------------------------------------"
+    echo "$PUBKEY"
+    echo "-----------------------------------------"
+    echo
+    echo "Права доступа:"
+    echo "chmod 700 ~/.ssh"
+    echo "chmod 600 ~/.ssh/authorized_keys"
+    echo
+    echo "После завершения нажмите ENTER для продолжения..."
+
+    # Ожидание подтверждения
+    read -r
+
+    log "Продолжаем выполнение скрипта"
+    return 0
+}
 
 echo ""
 echo "=== ЗАВЕРШЕНИЕ ПРОБРОСА КЛЮЧА ==="
