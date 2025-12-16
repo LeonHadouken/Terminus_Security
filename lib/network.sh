@@ -61,6 +61,34 @@ transfer_ssh_key() {
     read -p "Введите имя пользователя на клиенте (по умолчанию: root): " WSL_USER
     WSL_USER=${WSL_USER:-root}
 
+    read -p "Порт SSH на клиенте (по умолчанию: 22): " WSL_PORT
+    WSL_PORT=${WSL_PORT:-22}
+
+    PUBKEY=$(cat /root/.ssh/id_ed25519.pub)
+
+    # Определяем, находимся ли мы в WSL
+    if grep -qEi "(Microsoft|WSL)" /proc/version &>/dev/null; then
+        log "Обнаружена среда WSL. Попытка использовать SCP..."
+        CLIENT_IP=$(ip addr show eth0 | awk '/inet / {print $2}' | cut -d/ -f1)
+        log "Используем локальный IP WSL: $CLIENT_IP"
+
+        echo "Убедитесь, что Windows Firewall разрешает входящие подключения на порт $WSL_PORT."
+        echo "Если не уверен — добавьте правило для ssh.exe или откройте порт вручную."
+
+        # Создаём ~/.ssh на клиенте и добавляем ключ
+        mkdir -p ~/.ssh
+        if ! grep -qF "$PUBKEY" ~/.ssh/authorized_keys 2>/dev/null; then
+            echo "$PUBKEY" >> ~/.ssh/authorized_keys
+            chmod 700 ~/.ssh
+            chmod 600 ~/.ssh/authorized_keys
+        fi
+
+        log "✅ Ключ добавлен локально. Проверьте подключение:"
+        echo "ssh -i /root/.ssh/id_ed25519 ${WSL_USER}@${CLIENT_IP} -p $WSL_PORT"
+        return 0
+    fi
+
+    # Обычная Linux-машина: используем sshpass
     read -sp "Введите пароль пользователя '$WSL_USER' на клиенте: " WSL_PASSWORD
     echo ""
 
@@ -69,23 +97,16 @@ transfer_ssh_key() {
         return 1
     fi
 
-    read -p "Порт SSH на клиенте (по умолчанию: 22): " WSL_PORT
-    WSL_PORT=${WSL_PORT:-22}
-
-    PUBKEY=$(cat /root/.ssh/id_ed25519.pub)
-
     if ! command -v sshpass &> /dev/null; then
         apt install -y sshpass
     fi
 
-    log "Пытаюсь передать ключ на ${WSL_USER}@${YOUR_IP}:${WSL_PORT}..."
-
     SSH_CMD="mkdir -p ~/.ssh && echo '$PUBKEY' >> ~/.ssh/authorized_keys && chmod 700 ~/.ssh && chmod 600 ~/.ssh/authorized_keys"
 
+    log "Пытаюсь передать ключ на ${WSL_USER}@${YOUR_IP}:${WSL_PORT}..."
     if sshpass -p "$WSL_PASSWORD" ssh -o StrictHostKeyChecking=no -o ConnectTimeout=10 -p $WSL_PORT \
        ${WSL_USER}@$YOUR_IP "$SSH_CMD" 2>/dev/null; then
         log "✅ Ключ успешно передан на ${WSL_USER}@${YOUR_IP}:${WSL_PORT}"
-        # Тестируем подключение обратно
         if ssh -o BatchMode=yes -o ConnectTimeout=5 -p $WSL_PORT ${WSL_USER}@$YOUR_IP "echo '✅ SSH подключение работает!'" 2>/dev/null; then
             log "✅ Автоматическая настройка успешна!"
         else
@@ -99,6 +120,7 @@ transfer_ssh_key() {
         return 1
     fi
 }
+
 
 echo ""
 echo "=== ЗАВЕРШЕНИЕ ПРОБРОСА КЛЮЧА ==="
