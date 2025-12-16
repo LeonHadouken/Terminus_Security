@@ -43,6 +43,7 @@ check_config() {
     echo -e "${GREEN}✅ Конфигурация принята:${NC}"
     echo "  Ваш IP: $YOUR_IP"
     echo "  Сервер: $SERVER_NAME"
+    echo "  Honeypot: $HONEYPOT_PORT"
     echo ""
 }
 
@@ -78,6 +79,8 @@ main() {
     transfer_ssh_key        # 2. Передаем ключ на клиент
     clean_traces            # 3. Очищаем следы пароля
     setup_ssh_hardening     # 4. Запрещаем пароли, меняем порт
+
+    # UFW будет настроен здесь, но разрешение для HONEYPOT_PORT добавится в tools.sh
     setup_ufw               # 5. Настраиваем фаервол
 
     # ==========================================================
@@ -90,9 +93,11 @@ main() {
     start_task setup_fail2ban "Установка и настройка Fail2Ban"
     start_task secure_logs "Защита системных логов (chattr +a)"
     start_task setup_audit "Настройка аудита системы (Auditd)"
+
+    # Эти задачи могут занять много времени (установка ClamAV, Docker)
     start_task install_security_tools "Установка сканеров (RKHunter, ClamAV, AIDE)"
     start_task setup_monitoring "Настройка мониторинга и отчетов Telegram"
-    start_task honeypot_setup "Настройка Honeypot"
+    start_task honeypot_setup "Настройка Cowrie Honeypot (включая Docker и PCAP)"
     start_task backup_configs "Создание бэкапа конфигураций"
 
     # Ожидаем завершения всех задач
@@ -104,7 +109,7 @@ main() {
     finalize
 
     # Предложение о перезагрузке
-    log "Перезагрузка рекомендуется для применения всех настроек (особенно PAM и SSH)"
+    log "Перезагрузка рекомендуется для применения всех настроек (особенно PAM, SSH и Docker)"
     read -p "Перезагрузить сейчас? (y/N): " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
