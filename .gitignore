@@ -1,2 +1,7 @@
-/legacy
-/.idea
+# ПРАВИЛЬНЫЙ .gitignore ДЛЯ ПРОЕКТА
+
+# IDE (PyCharm / IntelliJ)
+.idea/
+
+# Legacy / старые версии / архив
+legacy/
