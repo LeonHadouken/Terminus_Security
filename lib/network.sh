@@ -175,7 +175,7 @@ PrintLastLog yes
 
 # = КРИПТОГРАФИЯ =
 Ciphers chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com
-MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.org
+MACs hmac-sha2-512,hmac-sha2-256
 KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org
 
 # = ПОДСИСТЕМЫ =
