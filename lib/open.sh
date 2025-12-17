@@ -14,6 +14,6 @@ sudo sed -i "s/^#\?PasswordAuthentication .*/PasswordAuthentication yes/" $CONF_
 sudo sed -i "s/^#\?PermitRootLogin .*/PermitRootLogin yes/" $CONF_FILE
 
 echo "Перезапускаем SSH..."
-sudo systemctl restart sshd
+sudo systemctl restart ssh
 
 echo "✅ Вход по паролю для root включен. Теперь можно подключаться через ssh root@SERVER_IP."
