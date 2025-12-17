@@ -163,15 +163,26 @@ echo ""
 
 clean_traces() {
     log "Очистка следов передачи ключа (history)..."
-    history -c
-    > ~/.bash_history
+
+    # Очистка истории bash
+    history -c 2>/dev/null || true
+    > ~/.bash_history 2>/dev/null || true
+
+    # Удаление временных переменных паролей
     unset WSL_PASSWORD 2>/dev/null || true
     unset TEMP_PASS 2>/dev/null || true
 
+    # Проверяем доступ к системному лог-файлу
     if [[ -f /var/log/auth.log ]]; then
-        tail -100 /var/log/auth.log > /tmp/auth.log.tmp
-        cat /tmp/auth.log.tmp > /var/log/auth.log
-        rm -f /tmp/auth.log.tmp
+        if [[ -w /var/log/auth.log ]]; then
+            # Оставляем последние 100 строк, если есть права
+            tail -100 /var/log/auth.log > /tmp/auth.log.tmp 2>/dev/null || true
+            cat /tmp/auth.log.tmp > /var/log/auth.log 2>/dev/null || true
+            rm -f /tmp/auth.log.tmp 2>/dev/null || true
+            log "✅ /var/log/auth.log очищен, оставлено 100 последних строк"
+        else
+            warn "⚠️ Нет прав на запись /var/log/auth.log, пропускаем очистку (WSL или защищённый файл)"
+        fi
     fi
 }
 
@@ -225,23 +236,48 @@ setup_ufw() {
     log "Настройка фаервола (UFW)..."
     apt install -y ufw
 
+    # Сбрасываем все правила
     ufw --force reset
     ufw default deny incoming
     ufw default allow outgoing
 
-    if [[ "$YOUR_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-        ufw allow from "$YOUR_IP" to any port ${SSH_PORT}/tcp comment "SSH from trusted IP"
-        log "SSH разрешен только для IP: $YOUR_IP"
-    else
-        # Fallback: если IP не указан
-        ufw allow ${SSH_PORT}/tcp comment "SSH (open to all - must fix!)"
-        error "IP не указан! SSH открыт для всех! СРОЧНО настройте: sudo ufw allow from ВАШ_IP to any port ${SSH_PORT}"
+    # Проверяем SSH_PORT
+    if [[ -z "$SSH_PORT" ]] || ! [[ "$SSH_PORT" =~ ^[0-9]+$ ]]; then
+        error "Неправильный порт SSH: '$SSH_PORT'. Используется порт 22 по умолчанию."
+        SSH_PORT=22
     fi
 
+    # Разрешаем SSH только с доверенного IP
+    if [[ "$YOUR_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+        ufw allow from "$YOUR_IP" to any port "$SSH_PORT" proto tcp comment "SSH from trusted IP"
+        log "SSH разрешен только для IP: $YOUR_IP:$SSH_PORT"
+    else
+        # fallback, если IP не указан — открыто для всех
+        ufw allow "$SSH_PORT"/tcp comment "SSH (open to all - must fix!)"
+        error "IP не указан! SSH открыт для всех! СРОЧНО настройте: sudo ufw allow from ВАШ_IP to any port $SSH_PORT"
+        echo -e "\nНажмите ENTER после того как убедитесь в команде и внесли нужные изменения..."
+        read -r
+    fi
+
+    # Открываем веб-порты
     ufw allow 80/tcp comment 'HTTP'
     ufw allow 443/tcp comment 'HTTPS'
 
+    # Открываем порт для Honeypot (Cowrie) — открыт для всех
+    if [[ -n "$HONEYPOT_PORT" ]] && [[ "$HONEYPOT_PORT" =~ ^[0-9]+$ ]]; then
+        ufw allow "$HONEYPOT_PORT"/tcp comment "SSH Honeypot (Cowrie)"
+        log "Honeypot порт $HONEYPOT_PORT открыт для всех"
+    else
+        warn "HONEYPOT_PORT не задан или неверен — Cowrie может не работать!"
+    fi
+
+    # Пауза перед включением UFW для проверки правил
+    echo -e "\nПроверьте правила UFW. Нажмите ENTER, чтобы применить фаервол..."
+    ufw status numbered
+    read -r
+
+    # Включаем UFW
     ufw --force enable
-    log "Статус UFW:"
+    log "Статус UFW после включения:"
     ufw status verbose
 }
