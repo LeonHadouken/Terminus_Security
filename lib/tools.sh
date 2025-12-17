@@ -15,23 +15,42 @@ install_security_tools() {
         clamav clamav-daemon
 
     # ВНИМАНИЕ: AIDE инициализацию нужно выполнять ВРУЧНУЮ после установки
-    # aideinit --force && cp /var/lib/aide/aide.db.new /var/lib/aide/aide.db
     log "AIDE установлен. Запустите ВРУЧНУЮ после настройки: aideinit --force"
+    read -p "После выполнения команды AIDE нажмите ENTER для продолжения..."
 
-    # Настройка ClamAV - исправленное имя сервиса
-    log "Обновление и запуск ClamAV..."
-    freshclam
-    systemctl enable clamav-freshclam.timer  # ИСПРАВЛЕНО: правильное имя таймера
+    # Настройка ClamAV
+    log "Проверка состояния ClamAV..."
+    if pgrep -x freshclam >/dev/null; then
+        log "✅ freshclam уже работает как демон, ручной запуск не нужен."
+    else
+        log "Запуск freshclam для обновления баз..."
+        if freshclam; then
+            log "✅ Базы ClamAV обновлены успешно."
+        else
+            warn "⚠️ Не удалось обновить базы ClamAV вручную. Проверяйте /var/log/clamav/freshclam.log"
+        fi
+    fi
+
+    # Включаем таймер автоматических обновлений ClamAV
+    systemctl enable clamav-freshclam.timer
     systemctl start clamav-freshclam.timer
+    log "Таймер ClamAV включен для автоматического обновления."
 
-    # Ежедневное сканирование на руткиты - исправленная команда для cron
+    # Ежедневное сканирование на руткиты
+    log "Создаём скрипт ежедневной проверки rkhunter..."
     cat > /etc/cron.daily/rkhunter_check << 'EOF'
 #!/bin/bash
 # Сгенерировано скриптом безопасности
-/usr/bin/rkhunter --check --cronjob --quiet  # ИСПРАВЛЕНО: правильные флаги для cron
+/usr/bin/rkhunter --check --cronjob --quiet
 EOF
     chmod +x /etc/cron.daily/rkhunter_check
-}
+
+    # Ручная проверка rkhunter перед автоматизацией
+    log "Выполните ручную проверку rkhunter для первой инициализации."
+    echo -e "Для продолжения нажмите ENTER после выполнения:\n/usr/bin/rkhunter --check --nocolors"
+    read -r
+
+} 2>&1 | tee /var/log/security_install.log
 
 honeypot_setup() {
     log "Настройка продвинутого honeypot Cowrie на порту ${HONEYPOT_PORT}..."
@@ -198,6 +217,18 @@ EOF
     chmod +x $BOT_SCRIPT
     sed -i "s/\${TELEGRAM_BOT_TOKEN}/$TELEGRAM_BOT_TOKEN/g" $BOT_SCRIPT
     sed -i "s/\${TELEGRAM_CHAT_ID}/$TELEGRAM_CHAT_ID/g" $BOT_SCRIPT
+    # Тестовое сообщение
+    read -p "Отправить тестовое сообщение в Telegram бот безопасности? (y/n): " SEND_TEST
+    if [[ "$SEND_TEST" =~ ^[Yy]$ ]]; then
+        python3 - << EOF
+import requests
+token = "${TELEGRAM_BOT_TOKEN}"
+chat_id = "${TELEGRAM_CHAT_ID}"
+msg = "✅ Тестовое сообщение: Telegram бот Cowrie работает."
+requests.post(f"https://api.telegram.org/bot{token}/sendMessage", data={"chat_id": chat_id, "text": msg})
+EOF
+        log "Тестовое сообщение отправлено."
+    fi
 
     # Добавляем в cron каждые 5 минут
     (crontab -l 2>/dev/null; echo "*/5 * * * * /usr/bin/python3 $BOT_SCRIPT") | crontab -
