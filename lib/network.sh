@@ -9,6 +9,8 @@ setup_ssh_keys() {
 
     mkdir -p /root/.ssh
     chmod 700 /root/.ssh
+    touch /root/.ssh/authorized_keys
+    chmod 600 /root/.ssh/authorized_keys
 
     if [[ ! -f /root/.ssh/id_ed25519 ]]; then
         log "Генерация нового SSH ключа Ed25519..."
@@ -19,13 +21,11 @@ setup_ssh_keys() {
 
     if [[ -f /root/.ssh/id_ed25519.pub ]]; then
         PUBKEY=$(cat /root/.ssh/id_ed25519.pub)
-        if ! grep -q "$PUBKEY" /root/.ssh/authorized_keys 2>/dev/null; then
-            echo "$PUBKEY" >> /root/.ssh/authorized_keys
-            log "Публичный ключ добавлен в authorized_keys"
-        fi
+        # Добавляем ключ только если его нет в authorized_keys
+        grep -qxF "$PUBKEY" /root/.ssh/authorized_keys || echo "$PUBKEY" >> /root/.ssh/authorized_keys
+        chmod 600 /root/.ssh/authorized_keys
+        log "Публичный ключ добавлен в authorized_keys"
     fi
-
-    chmod 600 /root/.ssh/authorized_keys 2>/dev/null || touch /root/.ssh/authorized_keys && chmod 600 /root/.ssh/authorized_keys
 
     log "Ваш публичный SSH ключ:"
     echo "========================================="
