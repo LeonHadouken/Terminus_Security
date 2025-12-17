@@ -1,13 +1,15 @@
 #!/bin/bash
 # ==============================================
-# MAIN SECURITY EXECUTION SCRIPT v3.1 (Parallel + Menu)
+# MAIN SECURITY EXECUTION SCRIPT v2.0 (Parallel)
 # Автоматическая настройка безопасности сервера
 # ==============================================
 
-set -euo pipefail  # строгий режим + защита от неинициализированных переменных
+# Включаем строгий режим, но отключаем его для блока многопоточности,
+# так как ошибки в фоновых процессах обрабатываются через 'wait_for_tasks'
+set -e
 
 # --- ЗАГРУЗКА КОНФИГУРАЦИИ И БИБЛИОТЕК ---
-if [[ ! -f ./config.conf ]] || [[ ! -d ./lib ]]; then
+if [ ! -f ./config.conf ] || [ ! -d ./lib ]; then
     echo "❌ Ошибка: Отсутствует config.conf или директория lib."
     echo "Убедитесь, что все файлы находятся в директориях, как указано в README.md."
     exit 1
@@ -23,14 +25,18 @@ source ./lib/tools.sh
 # ==============================================
 # ПРОВЕРКА КОНФИГУРАЦИИ
 # ==============================================
+
 check_config() {
     if [[ ! "$YOUR_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
         echo -e "${RED}❌ ОШИБКА: Вы не указали ваш IP или формат неверный!${NC}"
+        echo ""
         read -p "Введите ваш IP адрес: " YOUR_IP
+
         if [[ ! "$YOUR_IP" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             error "Неверный формат IP! Запустите скрипт снова."
             exit 1
         fi
+        # Обновляем конфиг, чтобы не запрашивать IP снова при повторном запуске
         sed -i "s/^YOUR_IP=.*/YOUR_IP=\"$YOUR_IP\"/" config.conf
     fi
 
@@ -42,40 +48,13 @@ check_config() {
 }
 
 # ==============================================
-# МЕНЮ ДЛЯ ВЫБОРА ЭТАПОВ
-# ==============================================
-show_menu() {
-    clear
-    echo "========================================="
-    echo "   SERVER SECURITY SETUP MENU"
-    echo "========================================="
-    echo "1) Полная установка (все этапы)"
-    echo "2) Этап 1: Сеть и SSH (ключи, фаервол)"
-    echo "3) Этап 2: Защита и мониторинг (Fail2Ban, логирование, сканеры)"
-    echo "4) Honeypot Cowrie (Docker + PCAP)"
-    echo "5) Включить вход по паролю для root (SSH)"
-    echo "6) Выход"
-    echo "========================================="
-    read -rp "Выберите действие [1-6]: " choice
-
-    case $choice in
-        1) main_full=true ;;
-        2) main_ssh=true ;;
-        3) main_protect=true ;;
-        4) main_honeypot=true ;;
-        5) main_open_password=true ;;
-        6) exit 0 ;;
-        *) echo "❌ Неверный выбор"; read -rp "ENTER для продолжения..."; show_menu ;;
-    esac
-}
-
-# ==============================================
 # ГЛАВНЫЙ СЦЕНАРИЙ
 # ==============================================
+
 main() {
     clear
     echo "========================================="
-    echo "   SERVER SECURITY SETUP (PARALLEL + MENU)"
+    echo "   COMPLETE SERVER SECURITY SETUP (PARALLEL)"
     echo "========================================="
 
     if [[ $EUID -ne 0 ]]; then
@@ -84,54 +63,59 @@ main() {
     fi
 
     check_config
-    show_menu
 
-    # --- Этап 1: SSH и сеть ---
-    if [[ "${main_full:-false}" == true ]] || [[ "${main_ssh:-false}" == true ]]; then
-        log "--- [ЭТАП 1/2: SSH и СЕТЬ] ---"
-        setup_ssh_keys
-        transfer_ssh_key
-        clean_traces
-        setup_ssh_hardening
-        setup_ufw
+    # Обновляем пакеты (первый шаг)
+    log "Обновление пакетов..."
+    apt update && apt upgrade -y
+
+    # ==========================================================
+    # --- ЭТАП 1: СЕТЬ И АУТЕНТИФИКАЦИЯ (ПОСЛЕДОВАТЕЛЬНО) ---
+    # Эти шаги критически важны и должны выполняться по порядку.
+    # ==========================================================
+
+    log "--- [ЭТАП 1/2: SSH и СЕТЬ] --- Настройка доступа и фаервола (Последовательно)"
+
+    setup_ssh_keys          # 1. Генерируем ключи
+    transfer_ssh_key        # 2. Передаем ключ на клиент
+    clean_traces            # 3. Очищаем следы пароля
+    setup_ssh_hardening     # 4. Запрещаем пароли, меняем порт
+
+    # UFW будет настроен здесь, но разрешение для HONEYPOT_PORT добавится в tools.sh
+    setup_ufw               # 5. Настраиваем фаервол
+
+    # ==========================================================
+    # --- ЭТАП 2: ЗАЩИТА И МОНИТОРИНГ (МНОГОПОТОЧНО) ---
+    # ==========================================================
+
+    log "--- [ЭТАП 2/2: ЗАЩИТА] --- Настройка служб безопасности (Параллельно)"
+
+    # Запускаем задачи в фоне с помощью start_task, который также логирует начало
+    start_task setup_fail2ban "Установка и настройка Fail2Ban"
+    start_task secure_logs "Защита системных логов (chattr +a)"
+    start_task setup_audit "Настройка аудита системы (Auditd)"
+
+    # Эти задачи могут занять много времени (установка ClamAV, Docker)
+    start_task install_security_tools "Установка сканеров (RKHunter, ClamAV, AIDE)"
+    start_task setup_monitoring "Настройка мониторинга и отчетов Telegram"
+    start_task honeypot_setup "Настройка Cowrie Honeypot (включая Docker и PCAP)"
+    start_task backup_configs "Создание бэкапа конфигураций"
+
+    # Ожидаем завершения всех задач
+    if ! wait_for_tasks; then
+        error "Установка завершена с ошибками в одном или нескольких модулях. Проверьте логи выше."
     fi
 
-    # --- Этап 2: Защита и мониторинг ---
-    if [[ "${main_full:-false}" == true ]] || [[ "${main_protect:-false}" == true ]]; then
-        log "--- [ЭТАП 2/2: ЗАЩИТА И МОНИТОРИНГ] ---"
-        start_task setup_fail2ban "Fail2Ban"
-        start_task secure_logs "Защита логов"
-        start_task setup_audit "Auditd"
-        start_task install_security_tools "Сканеры (RKHunter, ClamAV, AIDE)"
-        start_task setup_monitoring "Мониторинг Telegram"
-        wait_for_tasks
-    fi
-
-    # --- Этап 3: Honeypot ---
-    if [[ "${main_full:-false}" == true ]] || [[ "${main_honeypot:-false}" == true ]]; then
-        honeypot_setup
-    fi
-
-    # --- Включение входа по паролю ---
-    if [[ "${main_open_password:-false}" == true ]]; then
-        log "Включение входа по паролю для root..."
-        bash ./lib/open.sh
-        echo -e "\nПроверьте подключение по SSH перед продолжением"
-        read -rp "Нажмите ENTER после проверки..."
-    fi
-
+    # --- 3. ЗАВЕРШЕНИЕ ---
     finalize
 
-    # --- Перезагрузка ---
-    log "Перезагрузка рекомендуется для применения всех настроек (PAM, SSH, Docker)"
-    read -rp "Перезагрузить сейчас? (y/N): " -n 1 -r
+    # Предложение о перезагрузке
+    log "Перезагрузка рекомендуется для применения всех настроек (особенно PAM, SSH и Docker)"
+    read -p "Перезагрузить сейчас? (y/N): " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         reboot
     fi
 }
 
-# ==============================================
-# ЗАПУСК
-# ==============================================
+# Запуск
 main "$@"
